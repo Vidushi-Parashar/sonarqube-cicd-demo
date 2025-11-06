@@ -1,65 +1,63 @@
 pipeline {
-  agent any
-  tools {
-        sonarQubeScanner 'SonarScanner'
+    agent any
+
+    environment {
+        // Replace 'SonarQubeServer' with the name you gave under 
+        // "Manage Jenkins → Configure System → SonarQube Servers"
+        SONARQUBE_ENV = 'SonarQubeServer'
+
+        // Optional: if you use a token-based authentication, 
+        // create a Jenkins secret text credential with your Sonar token 
+        // and reference it here
+        SONAR_TOKEN = credentials('Demo-token')
     }
 
-  environment {
-    DOCKERHUB_CREDS = credentials('dockerhub-creds')  // set this id in Jenkins
-    SONAR_TOKEN = credentials('sonar-token')          // secret text
-    IMAGE = "yourdockerhub/flask-sonar-demo"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Test & Coverage') {
-      steps {
-        sh '''
-          python -m venv venv
-          . venv/bin/activate || source venv/bin/activate
-          pip install -r requirements.txt
-          coverage run -m pytest
-          coverage xml -o coverage.xml || true
-        '''
-      }
-    }
-
-    stage('SonarQube Analysis') {
-      steps {
-        withSonarQubeEnv('SonarQubeServer') {
-          sh "sonar-scanner -Dsonar.projectBaseDir=. -Dsonar.login=${SONAR_TOKEN}"
+    stages {
+        stage('Checkout Code') {
+            steps {
+                // Pull latest code from GitHub
+                git branch: 'main', url: 'https://github.com/Vidushi-Parashar/sonarqube-cicd-demo.git'
+            }
         }
-      }
+
+        stage('Build') {
+            steps {
+                echo 'Building the project...'
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                // Run sonar-scanner using environment configured in Jenkins
+                withSonarQubeEnv('SonarQubeServer') {
+                    sh """
+                        sonar-scanner \
+                        -Dsonar.projectKey=sonarqube-cicd-demo \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=http://localhost:9000 \
+                        -Dsonar.login=${Demo_TOKEN}
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                // Wait for SonarQube to finish analysis and return Quality Gate result
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
     }
 
-    stage('Build Docker Image') {
-      steps {
-        sh "docker build -t ${IMAGE}:${env.BUILD_NUMBER} ."
-      }
+    post {
+        success {
+            echo '✅ Build and SonarQube Analysis completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed! Check logs for details.'
+        }
     }
-
-    stage('Push to DockerHub') {
-      steps {
-        sh '''
-          echo $DOCKERHUB_CREDS_PSW | docker login -u $DOCKERHUB_CREDS_USR --password-stdin
-          docker push ${IMAGE}:${BUILD_NUMBER}
-        '''
-      }
-    }
-
-    stage('Deploy to Kubernetes') {
-      steps {
-        // kubeconfig must be available on agent or use kubectl credentials binding
-        sh "kubectl apply -f deployment.yaml"
-        sh "kubectl apply -f service.yaml"
-      }
-    }
-  }
-
-  post {
-    always { echo "Pipeline completed" }
-  }
 }
