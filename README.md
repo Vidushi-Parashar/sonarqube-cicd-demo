@@ -46,17 +46,3 @@ E --> F[Kubernetes - Deploy to Cluster]
 F --> G[Application Running Successfully 🚀]
 
 
-## 🧪 Pipeline Stages
-
-### 1️⃣ **Code Checkout**
-- Jenkins fetches the latest code from GitHub.
-
-### 2️⃣ **SonarQube Code Analysis**
-- Jenkins triggers a static analysis scan on the code.
-- Reports code smells, bugs, and vulnerabilities.
-
-### 3️⃣ **Docker Build & Push**
-- Builds Docker image using `Dockerfile`.
-- Pushes the image to DockerHub:
-```bash
-docker push vidushi/python-cicd-demo:latest
